@@ -1,0 +1,209 @@
+<html>
+<head>
+    <style>
+        .fractionADT {
+            font-family: "Courier New", Courier, monospace;
+            border: 1px solid black;
+            width: 3em;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    
+    
+<div id="controls">
+    <button id="btnNew" type="button">new fraction</button>
+    <br/>
+    <button id="operation_add" type="button">add 2 fractions</button>
+    
+    <br/>
+    <button id="btnChangeView" type="button">change view</button>
+    <br/><br/>
+    <button id="btnDelete" type="button">delete fraction</button>
+</div>  <br/>
+
+<div id="outputDiv" width="100%"></div>
+
+    
+<script>    
+// First, checks if it isn't implemented yet.
+// USAGE: "{0} is dead, but {1} is alive! {0} {2}".format("ASP", "ASP.NET")
+if (!String.prototype.format) {
+  String.prototype.format = function() {
+    var args = arguments;
+    return this.replace(/{(\d+)}/g, function(match, number) { 
+      return typeof args[number] != 'undefined'
+        ? args[number]
+        : match
+      ;
+    });
+  };
+}
+    
+    
+var cloneObject = function(obj){ return JSON.parse(JSON.stringify( obj )); }
+</script>    
+    
+<script>
+
+/* fractionADT = {
+   constructor: function(numerator, denominator){ ... },
+
+   numerator: INT,
+   denumerator: INT,
+
+   // operation1: {name:'add', function(a,b){ ... } };
+   add: function(a:fractionADT ,b:fractionADT ){ ... }
+
+
+   // Normal forms? 
+   // It should always be possible to convert from a view to another
+   view1: "<div>{n}</div>----<div>{d}</div>" | {n:this.numerator,d:this.denominator};
+   view2: "<div class='blue'></div>" * this.numerator + 
+          "<div class='red'></div>" * this.denominator;
+   view3: // some kind of notation to define a pie-chart
+
+   defaultView: view1;
+}
+*/
+    
+var fractionADT = {
+    exemplar: 
+        {num:0, 
+         den:0,
+         _ADTname: 'fractionADT',
+         _currentViewIndex: 0}
+}
+
+fractionADT.operations = {
+    constructor: function(numerator,denominator){
+            var o = cloneObject(fractionADT.exemplar);
+            o.num = numerator;
+            o.den = denominator;
+            OBJECT_HEAP.push( o );
+        },
+     add: function(fractionA,fractionB){
+        var o = cloneObject(fractionADT.exemplar);
+        if (fractionA.den == fractionB.den){
+            o.num = fractionA.num + fractionB.num;
+            o.den = fractionA.den;
+        } else {
+            o.num = fractionA.num*fractionB.den + fractionB.num*fractionA.den;
+            o.den = fractionA.den * fractionB.den;
+            // simplify...
+        }
+        //console.log( '--->' , o);
+        OBJECT_HEAP.push( o );
+      }
+};
+
+fractionADT.views = [
+    function(fraction){
+        return '<div class="fractionADT" draggable="true"><center>'+
+            "<div>{0}</div><hr><div>{1}</div></center></div>".format(fraction.num,fraction.den);
+    },
+    function(fraction){
+        return '<div class="fractionADT" draggable="true"> <div>{0}</div><div>{1}</div> </div>'.format( 
+                    '*'.repeat(fraction.num),
+                    '#'.repeat(fraction.den) );
+    },
+    function(fraction){
+        var strip = fraction.num+'/'+fraction.den;   
+        if (fraction.den<=12){
+            if (fraction.num<=fraction.den){
+                strip = '[' + '*'.repeat(fraction.num) + '#'.repeat(fraction.den-fraction.num) + ']';
+            }
+        }
+        return '<div class="fractionADT" draggable="true">'+
+                strip
+                '</div>';
+    }   
+];
+</script>
+    
+<script>
+
+function drag_start(event) {
+    var style = window.getComputedStyle(event.target, null);
+    event.dataTransfer.setData("text/plain",
+    (parseInt(style.getPropertyValue("left"),10) - event.clientX) + ',' + (parseInt(style.getPropertyValue("top"),10) - event.clientY));
+} 
+function drag_over(event) { 
+    event.preventDefault(); 
+    return false; 
+} 
+function drop(event) { 
+    var offset = event.dataTransfer.getData("text/plain").split(',');
+    var dm = document.getElementById('dragme');
+    dm.style.left = (event.clientX + parseInt(offset[0],10)) + 'px';
+    dm.style.top = (event.clientY + parseInt(offset[1],10)) + 'px';
+    event.preventDefault();
+    return false;
+} 
+/*
+var dm = document.getElementById('dragme'); 
+dm.addEventListener('dragstart',drag_start,false); 
+*/
+document.body.addEventListener('dragover',drag_over,false); 
+document.body.addEventListener('drop',drop,false); 
+
+var output = document.getElementById('outputDiv');
+
+var refreshViews = function(){
+    console.log( OBJECT_HEAP );
+    
+    output.innerHTML = '';
+    for (index in OBJECT_HEAP){
+        var ADT = eval(OBJECT_HEAP[index]._ADTname);
+        var representation = ADT.views[ OBJECT_HEAP[index]._currentViewIndex ]( OBJECT_HEAP[index] );
+        //console.log( representation );
+        
+        output.innerHTML += representation;
+    }
+}
+
+/*
+// auto-generate buttons for each operation
+for (var name : fractionADT.operations){
+    
+}
+*/
+document.getElementById('btnNew').addEventListener('click',function(evt){
+    var a =  ~~(Math.random()*15+1);
+    var b =  ~~(Math.random()*15+1);
+    fractionADT.operations.constructor( Math.min(a,b)  , Math.max(a,b)+1 );
+    refreshViews();
+});
+document.getElementById('btnChangeView').addEventListener('click',function(evt){
+    OBJECT_HEAP[OBJECT_HEAP.length-1]._currentViewIndex = ( OBJECT_HEAP[OBJECT_HEAP.length-1]._currentViewIndex +1 ) % fractionADT.views.length;
+    refreshViews();
+});
+document.getElementById('btnDelete').addEventListener('click',function(evt){
+    OBJECT_HEAP.pop();
+    refreshViews();
+});    
+document.getElementById('operation_add').addEventListener('click',function(evt){
+    fractionADT.operations.add( OBJECT_HEAP[OBJECT_HEAP.length-1] , OBJECT_HEAP[OBJECT_HEAP.length-2]);
+    refreshViews();
+});    
+
+
+var OBJECT_HEAP = [];
+    
+refreshViews();
+fractionADT.operations.constructor(1,3);
+refreshViews();
+fractionADT.operations.constructor(2,3);
+refreshViews();
+
+fractionADT.operations.add( OBJECT_HEAP[0] , OBJECT_HEAP[1]);
+refreshViews();
+    
+OBJECT_HEAP[0]._currentViewIndex = 1;
+refreshViews();
+    
+</script>    
+
+</body>
+</html>

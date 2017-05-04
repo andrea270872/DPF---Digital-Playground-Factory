@@ -1,0 +1,396 @@
+<html>
+   <head>
+    <style>
+       * { margin:0; padding:0; } /* to remove the top and left whitespace */
+
+       html, body { width:100%; height:100%; } /* just to be sure these are full screen*/
+
+       canvas { display:block; }
+    </style>      
+   </head>
+    <body>
+       <canvas id="myCanvas"></canvas>
+        
+       <script src="digitalPlayground_v3_2_1_Fractions.js"></script>    
+	   <script src="digitalPlayground_v3_2_1_playground1.js"></script>    
+       <script>
+	   console.log( ADT );
+
+var canvas = document.getElementById('myCanvas');
+var ctx = canvas.getContext('2d');
+ctx.font = "12px Arial";
+                        
+function resizeCanvas() {
+   canvas.width = window.innerWidth;
+   canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas, false);
+       
+/* ---------------------------------- */  
+var MOUSE_POS = {x:0,y:0};
+var MOUSE_PRESSED = false;
+var SELECTED_BOX = null; 
+var SELECTED_BOX_DRAG_FIRST_POS = {x:0,y:0}; 
+var SELECTED_BOX_DPOS = {x:0,y:0}; 
+var SELECTED_BOX_IS_OP = false;
+var _DATE = null;
+
+canvas.addEventListener('mousemove', function(evt) {
+   var rect = canvas.getBoundingClientRect();
+   MOUSE_POS.x = evt.clientX - rect.left;
+   MOUSE_POS.y = evt.clientY - rect.top;
+
+   // dragging
+   if ((MOUSE_PRESSED) && (SELECTED_BOX!=null)){
+      SELECTED_BOX.x = MOUSE_POS.x + SELECTED_BOX_DPOS.x;
+      SELECTED_BOX.y = MOUSE_POS.y + SELECTED_BOX_DPOS.y;
+   }
+   
+}, false);
+
+canvas.addEventListener('mousedown', function(evt) {
+   MOUSE_PRESSED = true;
+   _DATE = new Date(); // remembering now!
+   
+   SELECTED_BOX_IS_OP = false;
+   SELECTED_BOX = findBoxAtPos(MOUSE_POS);
+   if (SELECTED_BOX!=null){
+      SELECTED_BOX_DPOS.x = SELECTED_BOX.x - MOUSE_POS.x;
+      SELECTED_BOX_DPOS.y = SELECTED_BOX.y - MOUSE_POS.y;
+      
+      SELECTED_BOX_DRAG_FIRST_POS.x = SELECTED_BOX.x;
+      SELECTED_BOX_DRAG_FIRST_POS.y = SELECTED_BOX.y;
+   } else { // if you did not click on a Box, perhaps you clicked on an OpBox
+		SELECTED_BOX = findOpBoxAtPos(MOUSE_POS);
+		if (SELECTED_BOX!=null){
+			SELECTED_BOX_IS_OP = true;
+			
+			SELECTED_BOX_DPOS.x = SELECTED_BOX.x - MOUSE_POS.x;
+			SELECTED_BOX_DPOS.y = SELECTED_BOX.y - MOUSE_POS.y;
+
+			SELECTED_BOX_DRAG_FIRST_POS.x = SELECTED_BOX.x;
+			SELECTED_BOX_DRAG_FIRST_POS.y = SELECTED_BOX.y;
+		}
+   }
+   
+}, false);
+canvas.addEventListener('mouseup', function(evt) {
+   // drop
+   if (SELECTED_BOX!=null){ // grid-snap when Box is dropped!
+      SELECTED_BOX.x = Math.round(SELECTED_BOX.x / GRID_SIZE_X)*GRID_SIZE_X;
+      SELECTED_BOX.y = Math.round(SELECTED_BOX.y / GRID_SIZE_Y)*GRID_SIZE_Y;
+   
+	  if (!SELECTED_BOX_IS_OP){ // you are dragging a Box (not an OpBox)
+		  // check if HOLD the button down
+		  if (SELECTED_BOX_DRAG_FIRST_POS.x-SELECTED_BOX.x + 
+			  SELECTED_BOX_DRAG_FIRST_POS.y-SELECTED_BOX.y == 0){ // moved very little, could be HOLD?
+			 if (new Date().getTime() - _DATE.getTime() >= 600){ // milliseconds
+				//console.log( 'HOLD');
+				SELECTED_BOX.nextView();
+			 }
+		  }
+	  } else {
+		_DATE = null;
+	  }
+   }
+   
+   MOUSE_PRESSED = false;
+   _DATE = null;
+   MOUSE_MOVED_WHILE_PRESSED = false;
+}, false);
+    
+/* ---------------------------------- */  
+
+// box for values
+var Box = function(x,y,width,height, 
+                   obj,currentViewIndex){
+    this.obj = obj; // the object that this Box represent
+    this.x = x;
+    this.y = y;
+    this.w = width;
+    this.h = height;
+    this.viewNum = obj.views.length; // how many views for this object?
+    
+    this._currentViewIndex = currentViewIndex;
+   
+    this.nextView = function(){
+       this._currentViewIndex = (this._currentViewIndex+1) % this.viewNum;
+    }
+
+}
+
+// box for operations
+var OpBox = function(x,y,width,height, 
+                   name,operation,inN,outN,
+				   removeInputs){
+    this.name = name;
+    this.op = operation; // the object that this OpBox represent
+    this.inNumber = inN;
+    this.outNumber = outN;
+    this._maxPorts = Math.max(this.inNumber,this.outNumber);
+	this.removeInputs = (removeInputs||false); // default: false
+    this.x = x;
+    this.y = y;
+	this.unitW = width;
+    this.w = width * this._maxPorts;
+    this.h = height;
+      
+    this.draw = function(){
+      var w_2 = ~~(this.unitW/2);
+
+      // inputs
+      ctx.fillStyle="rgba(128, 128, 128, 0.50)";
+      for (var i=0;i<this.inNumber;i++){
+         ctx.beginPath();
+         ctx.ellipse(w_2+this.unitW*i,0, w_2, this.h*3/4,  0, 0, 2 * Math.PI);
+         ctx.fill();
+         ctx.closePath();
+      }
+
+      // onputs
+      ctx.fillStyle="rgba(128, 128, 128, 0.50)";
+      for (var i=0;i<this.outNumber;i++){
+         ctx.beginPath();
+         //ctx.arc(w_2+this.w*i,this.h, w_2, 0, 2 * Math.PI, true);
+         ctx.ellipse(w_2+this.unitW*i,this.h, w_2, this.h*3/4,  0, 0, 2 * Math.PI);
+         ctx.fill();
+         ctx.closePath();
+      }       
+       
+      ctx.beginPath();
+      ctx.fillStyle="#7600ff";
+      ctx.fillRect(0,0,this.w,this.h);
+      ctx.closePath();
+       
+      ctx.beginPath();
+      ctx.fillStyle="white";
+      ctx.fillText( this.name ,
+            (this.w)/2-20,this.h/2); // center
+      ctx.closePath();
+    };
+    
+    // if possible, the operator will execute
+    this.activate = function(){
+       var inputParams = [];
+       var w_2 = ~~(this.unitW/2);
+       var h_2 = ~~(this.h/2);
+       for (var i=0;i<this.inNumber;i++){
+         var b = findBoxAtPos( {x: (this.x+w_2+this.unitW*i),y: (this.y-h_2) } );
+          /* debug
+          ctx.fillStyle = 'green';
+          ctx.fillRect((this.x+w_2+this.unitW*i),(this.y-h_2),
+                           10,10);
+           */
+         if (b!=null){
+            inputParams.push(b);
+         }
+       }
+        
+       // DEBUG console.log( inputParams );
+       if (inputParams.length==this.inNumber){
+          // all inputs are available...
+          
+          // TO DO => generalize to 'all output gates empty!'
+          // ... 
+          var anyOccupied = false;
+            for (var i=0;i<this.outNumber;i++){
+                var b = findBoxAtPos( {x: (this.x+w_2+this.unitW*i),y: (this.y+this.h+h_2) } );
+                /*
+                // debug
+                ctx.fillStyle = 'green';
+                ctx.fillRect((this.x+w_2+this.unitW*i),(this.y+this.h+h_2),
+                       10,10);
+                */
+                if (b!=null){
+                    anyOccupied = true;
+                    break;
+                }
+            }
+           
+          if (!anyOccupied){
+             // ...and nobody occupies the output gate 
+             
+			 // METHOD INVOCATION ... start
+             if (inputParams.length>0){
+                 inputParams = inputParams.map(function(element){
+                        return element.obj;
+                    });
+             }
+			 // DEBUG console.log( inputParams.length , inputParams , ';;;' , ""+_this );
+             var results = [];
+			 this.op.call( null , inputParams , results);
+              /*
+              // DEBUG
+              console.log( inputParams, inputParams.length );
+              console.log( results, results.length );
+			 */
+			 // ..................... stop
+			 if (this.removeInputs){
+				console.log( ' removing inputs ...' );
+				console.log( OBJECT_HEAP );
+				console.log( inputParams );
+                OBJECT_HEAP = OBJECT_HEAP.filter(function(element){
+                    return inputParams.indexOf(element.obj)==-1;
+				});
+             }
+			 
+             // place all outputs on the right platforms (visually)
+             for (var i=0;i<results.length;i++){
+                 OBJECT_HEAP.push( new Box(this.x +(i*SIZE_X),this.y+this.h,
+                                           SIZE_X,SIZE_Y, results[i] ,0) );
+                 console.log( '1 new object created');
+             }
+              
+          }
+       }
+
+    };
+}
+
+
+function isPointInRect(pX,pY,
+                     rectX,rectY,rectW,rectH){
+   return ((pX>=rectX) && (pX<=rectX+rectW)) && 
+          ((pY>=rectY) && (pY<=rectY+rectH));
+}
+
+// pos i {x,y}
+// index in OP_HEAP array represents z-index, search backwards
+function findOpBoxAtPos(pos){
+   for (var index=OP_HEAP.length-1;index>=0;index--){
+      if (isPointInRect(pos.x,pos.y,
+                        OP_HEAP[index].x,OP_HEAP[index].y,
+                        OP_HEAP[index].w,OP_HEAP[index].h)){
+         return OP_HEAP[index];
+      }
+   }
+   return null;
+}
+
+// pos i {x,y}
+// index in OBJECT_HEAP array represents z-index, search backwards
+function findBoxAtPos(pos){
+   for (var index=OBJECT_HEAP.length-1;index>=0;index--){
+      if (isPointInRect(pos.x,pos.y,
+                        OBJECT_HEAP[index].x,OBJECT_HEAP[index].y,
+                        OBJECT_HEAP[index].w,OBJECT_HEAP[index].h)){
+         return OBJECT_HEAP[index];
+      }
+   }
+   return null;
+}
+
+var THE_SIZE = 60; // TRY with 40 or 30
+var SIZE_X = THE_SIZE,
+    SIZE_Y = THE_SIZE;
+var GRID_SIZE_X = THE_SIZE,
+    GRID_SIZE_Y = THE_SIZE;
+var OBJECT_HEAP = []; // array of Boxes
+var OP_HEAP = []; // array of OpBoxes, operators
+
+playgroundSetup(ADT);
+
+function gridMe(){
+   var i;
+   ctx.lineWidth = 0.1;
+   for (i=0; i < canvas.height; i += GRID_SIZE_Y) {
+      ctx.beginPath();
+      ctx.moveTo(0,i);
+      ctx.lineTo(canvas.width,i);
+      ctx.stroke();
+      ctx.closePath();
+   }
+   for (i=0; i < canvas.width; i += GRID_SIZE_X) {
+      ctx.beginPath();
+      ctx.moveTo(i,0);
+      ctx.lineTo(i,canvas.height);
+      ctx.stroke();
+      ctx.closePath();
+   }
+}       
+       
+   
+function step(timestamp) {
+   
+  // refresh all views
+  ctx.clearRect(0, 0, canvas.width, canvas.height); // clear
+  ctx.fillStyle="black";
+  ctx.strokeStyle="black";
+  
+  // DEBUG 
+  gridMe();
+
+  // draw all OpBoxes -> operators
+  for (index in OP_HEAP){
+     ctx.save();
+     ctx.translate( OP_HEAP[index].x , OP_HEAP[index].y );     
+         OP_HEAP[index].draw();
+     ctx.restore();
+  }
+   
+  // draw all Boxes -> objects
+  var moveSelectedToTop = false;
+  for (index in OBJECT_HEAP){
+     ctx.save();
+     ctx.translate( OBJECT_HEAP[index].x , OBJECT_HEAP[index].y);
+     
+     // debugging
+     ctx.beginPath();
+     ctx.fillStyle = '#F0F0F0';
+     ctx.lineWidth = 1;
+     ctx.fillRect(0,0,OBJECT_HEAP[index].w,OBJECT_HEAP[index].h);
+     ctx.closePath();
+
+     
+      var temp = OBJECT_HEAP[index].obj;
+      // DEBUG  console.log( temp._get() );
+      var representation = temp.views[ OBJECT_HEAP[index]._currentViewIndex ].
+                        call(temp , ctx,OBJECT_HEAP[index].w,OBJECT_HEAP[index].h);
+      
+     if (SELECTED_BOX==OBJECT_HEAP[index]){ // a Box is currently selected
+        ctx.beginPath();
+        ctx.strokeStyle = 'pink';
+        ctx.lineWidth = 10;
+        ctx.strokeRect(0,0,OBJECT_HEAP[index].w,OBJECT_HEAP[index].h);
+        ctx.closePath();
+
+        ctx.lineWidth = 1;
+        
+        // put selected_box on top
+        if (!moveSelectedToTop){
+           //console.log("put on top",index);
+           OBJECT_HEAP.splice(index, 1);
+           OBJECT_HEAP.push(SELECTED_BOX);
+        }
+     }	 
+     ctx.restore();
+  }
+  
+   if ((SELECTED_BOX!=null) && (SELECTED_BOX_IS_OP)){ // an OpBox is currently selected
+	ctx.beginPath();
+	ctx.strokeStyle = '#FF69B4';
+	ctx.lineWidth = 10;
+	ctx.strokeRect(SELECTED_BOX.x,SELECTED_BOX.y,
+					SELECTED_BOX.w,SELECTED_BOX.h);
+	ctx.closePath();
+
+	ctx.lineWidth = 1;
+ }
+
+   
+   // draw all OpBoxes -> operators
+   if (!MOUSE_PRESSED){ // when your are done drag&dropping...
+      for (index in OP_HEAP){
+        OP_HEAP[index].activate();
+      }
+   }   
+   
+   // loop
+   window.requestAnimationFrame(step);
+}
+
+window.requestAnimationFrame(step);
+</script>
+</body>
+</html>
